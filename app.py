@@ -63,44 +63,28 @@ def obtener_datos_equipos(sistema):
 # 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SVG)
 # ==========================================
 def inyectar_svg_interactivo(ruta_svg, datos_equipos):
+    # 1. Leemos el archivo SVG original
     with open(ruta_svg, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # Generamos el script con un pequeño retraso para asegurar que el SVG cargó
-    js_logic = ""
+    # 2. Usamos Python para inyectar los datos matemáticamente en el XML
     for unit_id, metricas in datos_equipos.items():
-        info_texto = f"EQUIPO: {unit_id}\\n"
+        # Usamos &#10; que es el código oficial para salto de línea en tooltips SVG
+        info_texto = f"EQUIPO: {unit_id}&#10;"
         for key, value in metricas.items():
-            info_texto += f"{key}: {value}\\n"
+            if value != 0: 
+                info_texto += f"{key}: {value}&#10;"
             
-        js_logic += f"""
-        var el = document.getElementById("{unit_id}");
-        if (el) {{
-            // Añadir tooltip nativo
-            var title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-            title.textContent = "{info_texto}";
-            el.appendChild(title);
-            
-            // Efecto visual para confirmar que funciona
-            el.style.cursor = "pointer";
-            el.addEventListener("mouseenter", function() {{ this.style.filter = "brightness(1.5)"; }});
-            el.addEventListener("mouseleave", function() {{ this.style.filter = "none"; }});
-        }}
-        """
+        # Buscamos la etiqueta de apertura del grupo (ej. <g id="P-100">)
+        etiqueta_buscar = f'<g id="{unit_id}">'
+        # Y le concatenamos la etiqueta <title> con los datos de BioSTEAM
+        etiqueta_reemplazo = f'<g id="{unit_id}">\n    <title>{info_texto}</title>'
+        
+        # Reemplazamos en el texto del SVG
+        svg_content = svg_content.replace(etiqueta_buscar, etiqueta_reemplazo)
 
-    html_code = f"""
-    <div id="svg-wrapper" style="display: flex; justify-content: center;">
-        {svg_content}
-    </div>
-    <script>
-        // Esperamos a que el DOM esté listo
-        document.addEventListener("DOMContentLoaded", function() {{
-            {js_logic}
-        }});
-    </script>
-    """
-    # Aumentamos el ancho al 100% para evitar recortes
-    st.components.v1.html(html_code, height=600, scrolling=True)
+    # 3. Enviamos el SVG modificado directamente a Streamlit (sin JavaScript)
+    st.components.v1.html(svg_content, height=600, scrolling=True)
 
 # ==========================================
 # 4. INTERFAZ Y TUTOR IA

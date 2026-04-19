@@ -27,7 +27,7 @@
     <text x="250" y="500">Vinazas retorno</text>
   </g>
 
-  <g id="P-100">
+  <g id="P100">
     <circle cx="150" cy="100" r="30" fill="#fff" stroke="#333" stroke-width="2"/>
     <path d="M 140 80 Q 170 100 140 120" fill="none" stroke="#333" stroke-width="2"/>
     <rect x="135" y="130" width="30" height="10" fill="#fff" stroke="#333" stroke-width="2"/>
@@ -35,7 +35,7 @@
     <rect x="110" y="60" width="80" height="100" fill="transparent"/>
   </g>
 
-  <g id="W-210">
+  <g id="W210">
     <rect x="320" y="120" width="160" height="60" rx="5" fill="#fff" stroke="#333" stroke-width="2"/>
     <line x1="340" y1="120" x2="340" y2="180" stroke="#333" stroke-width="2"/>
     <line x1="460" y1="120" x2="460" y2="180" stroke="#333" stroke-width="2"/>
@@ -45,14 +45,14 @@
     <rect x="310" y="110" width="180" height="100" fill="transparent"/>
   </g>
 
-  <g id="W-220">
+  <g id="W220">
     <circle cx="550" cy="250" r="30" fill="#fff" stroke="#333" stroke-width="2"/>
     <polyline points="525,240 550,260 575,240" fill="none" stroke="#333" stroke-width="2"/>
     <text x="530" y="300" font-size="14" fill="#000" font-weight="bold">W-220</text>
     <rect x="510" y="210" width="80" height="100" fill="transparent"/>
   </g>
 
-  <g id="V-100">
+  <g id="V100">
     <polygon points="680,340 720,360 680,360 720,340" fill="#fff" stroke="#333" stroke-width="2"/>
     <line x1="700" y1="350" x2="700" y2="335" stroke="#333" stroke-width="2"/>
     <line x1="695" y1="335" x2="705" y2="335" stroke="#333" stroke-width="2"/>
@@ -60,20 +60,20 @@
     <rect x="670" y="320" width="60" height="70" fill="transparent"/>
   </g>
 
-  <g id="V-1">
+  <g id="V1">
     <rect x="780" y="400" width="60" height="120" rx="15" fill="#fff" stroke="#333" stroke-width="2"/>
     <text x="800" y="540" font-size="14" fill="#000" font-weight="bold">V-1</text>
     <rect x="770" y="390" width="80" height="160" fill="transparent"/>
   </g>
 
-  <g id="W-310">
+  <g id="W310">
     <circle cx="910" cy="300" r="30" fill="#fff" stroke="#333" stroke-width="2"/>
     <polyline points="885,290 910,310 935,290" fill="none" stroke="#333" stroke-width="2"/>
     <text x="890" y="350" font-size="14" fill="#000" font-weight="bold">W-310</text>
     <rect x="870" y="260" width="80" height="100" fill="transparent"/>
   </g>
 
-  <g id="P-200">
+  <g id="P200">
     <circle cx="910" cy="600" r="30" fill="#fff" stroke="#333" stroke-width="2"/>
     <path d="M 900 580 Q 930 600 900 620" fill="none" stroke="#333" stroke-width="2"/>
     <rect x="895" y="630" width="30" height="10" fill="#fff" stroke="#333" stroke-width="2"/>

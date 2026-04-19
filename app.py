@@ -136,3 +136,4 @@ if st.button("Analizar eficiencia térmica con Gemini"):
     with st.spinner("El tutor está analizando los datos..."):
         respuesta = model.generate_content(prompt)
         st.info(respuesta.text)
+st.write("IDs buscados en el SVG:", list(datos.keys()))

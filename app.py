@@ -7,7 +7,7 @@ import google.generativeai as genai
 # ==========================================
 # 1. FUNCIÓN NÚCLEO DE SIMULACIÓN
 # ==========================================
-@st.cache_data(show_spinner=False)
+#@st.cache_data(show_spinner=False)
 def ejecutar_simulacion(flujo_mosto, temp_mosto, presion_bomba):
     # CRÍTICO: Limpiar el entorno para evitar "Duplicate ID" en cada recarga
     bst.main_flowsheet.clear()

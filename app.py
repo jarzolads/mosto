@@ -66,29 +66,40 @@ def inyectar_svg_interactivo(ruta_svg, datos_equipos):
     with open(ruta_svg, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # JavaScript para inyectar tooltips nativos en los elementos del SVG
+    # Generamos el script con un pequeño retraso para asegurar que el SVG cargó
     js_logic = ""
     for unit_id, metricas in datos_equipos.items():
-        info_texto = f"Equipo: {unit_id}\\n"
+        info_texto = f"EQUIPO: {unit_id}\\n"
         for key, value in metricas.items():
-            if value != 0: info_texto += f"{key}: {value}\\n"
+            info_texto += f"{key}: {value}\\n"
             
         js_logic += f"""
-        var elemento = document.getElementById("{unit_id}");
-        if(elemento) {{
-            elemento.innerHTML += '<title>{info_texto}</title>';
-            elemento.style.cursor = "pointer";
-            elemento.onmouseover = function() {{ this.style.opacity = "0.7"; }};
-            elemento.onmouseout = function() {{ this.style.opacity = "1"; }};
+        var el = document.getElementById("{unit_id}");
+        if (el) {{
+            // Añadir tooltip nativo
+            var title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+            title.textContent = "{info_texto}";
+            el.appendChild(title);
+            
+            // Efecto visual para confirmar que funciona
+            el.style.cursor = "pointer";
+            el.addEventListener("mouseenter", function() {{ this.style.filter = "brightness(1.5)"; }});
+            el.addEventListener("mouseleave", function() {{ this.style.filter = "none"; }});
         }}
         """
 
     html_code = f"""
-    <div style="width: 100%; overflow-x: auto;">
+    <div id="svg-wrapper" style="display: flex; justify-content: center;">
         {svg_content}
     </div>
-    <script>{js_logic}</script>
+    <script>
+        // Esperamos a que el DOM esté listo
+        document.addEventListener("DOMContentLoaded", function() {{
+            {js_logic}
+        }});
+    </script>
     """
+    # Aumentamos el ancho al 100% para evitar recortes
     st.components.v1.html(html_code, height=600, scrolling=True)
 
 # ==========================================

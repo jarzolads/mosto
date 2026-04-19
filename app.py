@@ -60,30 +60,30 @@ def obtener_datos_equipos(sistema):
     return datos_equipos
 
 # ==========================================
-# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SVG)
+# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SOLO PYTHON)
 # ==========================================
 def inyectar_svg_interactivo(ruta_svg, datos_equipos):
     # 1. Leemos el archivo SVG original
     with open(ruta_svg, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # 2. Usamos Python para inyectar los datos matemáticamente en el XML
+    # 2. Usamos Python para insertar los datos matemáticamente en el XML
     for unit_id, metricas in datos_equipos.items():
-        # Usamos &#10; que es el código oficial para salto de línea en tooltips SVG
+        # &#10; es el salto de línea oficial para tooltips en SVG
         info_texto = f"EQUIPO: {unit_id}&#10;"
         for key, value in metricas.items():
-            if value != 0: 
-                info_texto += f"{key}: {value}&#10;"
+            info_texto += f"{key}: {value}&#10;"
             
-        # Buscamos la etiqueta de apertura del grupo (ej. <g id="P-100">)
+        # Buscamos la etiqueta del grupo (ej. <g id="P-100">)
         etiqueta_buscar = f'<g id="{unit_id}">'
-        # Y le concatenamos la etiqueta <title> con los datos de BioSTEAM
-        etiqueta_reemplazo = f'<g id="{unit_id}">\n    <title>{info_texto}</title>'
+        
+        # Le inyectamos la etiqueta nativa <title> y cambiamos el cursor a la "manito"
+        etiqueta_reemplazo = f'<g id="{unit_id}" style="cursor: pointer;">\n    <title>{info_texto}</title>'
         
         # Reemplazamos en el texto del SVG
         svg_content = svg_content.replace(etiqueta_buscar, etiqueta_reemplazo)
 
-    # 3. Enviamos el SVG modificado directamente a Streamlit (sin JavaScript)
+    # 3. Enviamos el SVG modificado directamente a Streamlit (Cero JavaScript)
     st.components.v1.html(svg_content, height=600, scrolling=True)
 
 # ==========================================

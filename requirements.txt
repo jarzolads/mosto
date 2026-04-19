@@ -1,0 +1,5 @@
+streamlit
+biosteam
+thermosteam
+pandas
+google-generativeai

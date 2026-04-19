@@ -61,52 +61,41 @@ def obtener_datos_equipos(sistema):
     return datos_equipos
 
 # ==========================================
-# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (VERSIÓN ROBUSTA)
+# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SIN IFRAMES)
 # ==========================================
 def inyectar_svg_interactivo(ruta_svg, datos_equipos):
     with open(ruta_svg, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
+    # Inyectamos los datos matemáticamente en el XML
     for unit_id, metricas in datos_equipos.items():
-        # Preparamos el texto del tooltip
         info_texto = f"EQUIPO: {unit_id}&#10;"
         for key, value in metricas.items():
             if value != 0: 
                 info_texto += f"{key}: {value}&#10;"
             
-        # Estrategia a prueba de balas: busca "P-100" o "P100"
         id_alternativo = unit_id.replace("-", "")
-        
-        # Expresión regular: Encuentra cualquier <g> cuyo id sea P-100 o P100, 
-        # sin importar qué más haya escrito dentro de esa etiqueta.
         patron = rf'(<g[^>]*id=["\']?({unit_id}|{id_alternativo})["\']?[^>]*>)'
-        
-        # Inyecta la etiqueta <title> inmediatamente después de abrir el grupo <g>
         reemplazo = rf'\1\n    <title>{info_texto}</title>'
         
         svg_content = re.sub(patron, reemplazo, svg_content, flags=re.IGNORECASE)
 
-    # Añadimos reglas CSS globales al marco para forzar la interactividad
+    # LA SOLUCIÓN MÁGICA: Usar st.markdown con unsafe_allow_html=True
+    # Esto incrusta el SVG de forma nativa en la página, permitiendo que 
+    # el navegador muestre los tooltips sin restricciones de seguridad.
+    
     html_code = f"""
-    <style>
-        /* Obliga a todos los grupos con ID a cambiar el cursor y detectar el ratón */
-        svg g[id] {{
-            cursor: pointer !important;
-            pointer-events: all !important;
-            transition: opacity 0.2s;
-        }}
-        /* Añade un efecto visual al pasar el cursor para confirmar que funciona */
-        svg g[id]:hover {{
-            opacity: 0.6 !important;
-        }}
-    </style>
-    <div style="display: flex; justify-content: center; overflow-x: auto;">
+    <div style="display: flex; justify-content: center; margin: 20px 0;">
+        <style>
+            /* Cambia el cursor para indicar interactividad */
+            svg g[id] {{ cursor: pointer; transition: opacity 0.2s; }}
+            svg g[id]:hover {{ opacity: 0.7; }}
+        </style>
         {svg_content}
     </div>
     """
     
-    st.components.v1.html(html_code, height=600, scrolling=True)
-
+    st.markdown(html_code, unsafe_allow_html=True)
 # ==========================================
 # 4. INTERFAZ Y TUTOR IA
 # ==========================================

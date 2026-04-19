@@ -2,28 +2,33 @@ import streamlit as st
 import biosteam as bst
 import thermosteam as tmo
 import pandas as pd
-import google.generativeai as genai
-import plotly.graph_objects as go
 import base64
+import google.generativeai as genai
 
 # ==========================================
-# 1. FUNCIÓN NÚCLEO DE SIMULACIÓN
+# 1. CONFIGURACIÓN
 # ==========================================
-#@st.cache_data(show_spinner=False)
+st.set_page_config(layout="wide", page_title="Simulador BioSTEAM")
+
+def get_svg_base64(file_path):
+    """Convierte el SVG a base64 para incrustarlo como imagen de fondo."""
+    with open(file_path, "rb") as f:
+        data = f.read()
+        return base64.b64encode(data).decode()
+
+# ==========================================
+# 2. FUNCIÓN NÚCLEO DE SIMULACIÓN
+# ==========================================
 def ejecutar_simulacion(flujo_mosto, temp_mosto, presion_bomba):
-    # CRÍTICO: Limpiar el entorno para evitar "Duplicate ID" en cada recarga
     bst.main_flowsheet.clear()
-    
     chemicals = tmo.Chemicals(["Water", "Ethanol"])
     bst.settings.set_thermo(chemicals)
     
-    # Corrientes dinámicas
     mosto = bst.Stream("1-MOSTO", Water=flujo_mosto*0.9, Ethanol=flujo_mosto*0.1, 
                        units="kg/hr", T=temp_mosto + 273.15, P=101325)
     vinazas_retorno = bst.Stream("Vinazas-Retorno", Water=200, Ethanol=0, 
                                  units="kg/hr", T=95 + 273.15, P=300000)
     
-    # Equipos
     P100 = bst.Pump("P-100", ins=mosto, P=presion_bomba * 101325)
     W210 = bst.HXprocess("W-210", ins=(P100-0, vinazas_retorno), outs=("3-Mosto-Pre", "Drenaje"), phase0="l", phase1="l")
     W210.outs[0].T = 85 + 273.15
@@ -35,17 +40,12 @@ def ejecutar_simulacion(flujo_mosto, temp_mosto, presion_bomba):
     
     eth_sys = bst.System("planta_etanol", path=(P100, W210, W220, V100, V1, W310, P200))
     eth_sys.simulate()
-    
     return eth_sys
 
-# ==========================================
-# 2. EXTRACCIÓN DE DATOS Y CORRECCIÓN DE ERRORES
-# ==========================================
 def obtener_datos_equipos(sistema):
     datos_equipos = {}
     for u in sistema.units:
         calor_kw = 0.0
-        # Solución al error de tanques Flash adiabáticos
         if hasattr(u, 'heat_utilities') and u.heat_utilities:
             calor_kw = sum(hu.duty for hu in u.heat_utilities) / 3600
         elif hasattr(u, "duty") and u.duty is not None:
@@ -55,83 +55,17 @@ def obtener_datos_equipos(sistema):
         temp_out = u.outs[0].T - 273.15 if u.outs else 0
         
         datos_equipos[u.ID] = {
-            "Energía Térmica (kW)": round(calor_kw, 2),
-            "Energía Eléctrica (kW)": round(potencia, 2),
-            "Temp. Salida (°C)": round(temp_out, 1)
+            "Térmica (kW)": round(calor_kw, 2),
+            "Eléctrica (kW)": round(potencia, 2),
+            "T. Salida (°C)": round(temp_out, 1)
         }
     return datos_equipos
 
 # ==========================================
-# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (VÍA PLOTLY)
+# 3. INTERFAZ PRINCIPAL
 # ==========================================
-def inyectar_svg_interactivo(ruta_svg, datos_equipos):
-    # 1. Leer el SVG y codificarlo para que Plotly lo acepte como imagen de fondo
-    with open(ruta_svg, "rb") as f:
-        encoded_svg = base64.b64encode(f.read()).decode()
-    svg_uri = f"data:image/svg+xml;base64,{encoded_svg}"
-
-    # 2. Coordenadas de los equipos mapeadas desde tu archivo original (1200x800)
-    # Nota: Plotly invierte el eje Y respecto al formato SVG
-    coords = {
-        "P-100": {"x": 150, "y": 700},
-        "W-210": {"x": 400, "y": 650},
-        "W-220": {"x": 550, "y": 550},
-        "V-100": {"x": 700, "y": 450},
-        "V-1":   {"x": 810, "y": 340},
-        "W-310": {"x": 910, "y": 500},
-        "P-200": {"x": 910, "y": 200}
-    }
-
-    fig = go.Figure()
-
-    # 3. Añadimos tu diagrama SVG como fondo
-    fig.add_layout_image(
-        dict(
-            source=svg_uri,
-            xref="x", yref="y",
-            x=0, y=800,  # Origen en la esquina superior izquierda
-            sizex=1200, sizey=800,
-            sizing="stretch", layer="below"
-        )
-    )
-
-    # 4. Colocamos marcadores "invisibles" con los datos de BioSTEAM
-    for unit_id, metricas in datos_equipos.items():
-        if unit_id in coords:
-            # Construimos el texto que aparecerá al pasar el cursor
-            hover_text = f"<b>Equipo: {unit_id}</b><br>"
-            for key, value in metricas.items():
-                if value != 0: 
-                    hover_text += f"{key}: {value}<br>"
-
-            fig.add_trace(go.Scatter(
-                x=[coords[unit_id]["x"]],
-                y=[coords[unit_id]["y"]],
-                mode="markers",
-                marker=dict(size=60, color="rgba(0,0,0,0)"), # Círculo grande pero transparente
-                hoverinfo="text",
-                hovertext=hover_text,
-                showlegend=False
-            ))
-
-    # 5. Ocultamos los ejes para que parezca una aplicación pura
-    fig.update_layout(
-        xaxis=dict(visible=False, range=[0, 1200]),
-        yaxis=dict(visible=False, range=[0, 800]),
-        margin=dict(l=0, r=0, t=0, b=0),
-        plot_bgcolor="white",
-        hovermode="closest",
-        dragmode=False # Evita que el usuario mueva el dibujo por error
-    )
-
-    # 6. Enviamos el gráfico interactivo a Streamlit
-    # st.plotly_chart es 100% compatible y nativo
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-# ==========================================
-# 4. INTERFAZ Y TUTOR IA
-# ==========================================
-st.set_page_config(layout="wide", page_title="Simulador BioSTEAM")
 st.title("Proceso de Concentración de Mosto")
+st.markdown("Pasa el mouse sobre los equipos para ver los datos del balance en tiempo real.")
 
 with st.sidebar:
     st.header("Parámetros de Operación")
@@ -142,23 +76,112 @@ with st.sidebar:
 sys_simulado = ejecutar_simulacion(flujo, temp, presion)
 datos = obtener_datos_equipos(sys_simulado)
 
-st.subheader("Diagrama de Flujo de Proceso (Pase el cursor sobre los equipos)")
-# Asegúrese de que su archivo SVG tenga los id="P-100", id="W-210" en los grupos (<g>) correspondientes
-inyectar_svg_interactivo("Diagrama en blanco.svg", datos)
+# ==========================================
+# 4. RENDERIZADO INTERACTIVO (HTML + CSS)
+# ==========================================
+try:
+    svg_base64 = get_svg_base64("Diagrama en blanco.svg")
+    
+    # Coordenadas calculadas matemáticamente para superponerse a tu SVG (1200x800)
+    zonas = {
+        "P-100": {"top": "8%", "left": "10%", "w": "6%", "h": "10%"},
+        "W-210": {"top": "14%", "left": "26%", "w": "14%", "h": "8%"},
+        "W-220": {"top": "28%", "left": "43%", "w": "6%", "h": "9%"},
+        "V-100": {"top": "41%", "left": "55%", "w": "5%", "h": "6%"},
+        "V-1":   {"top": "49%", "left": "64%", "w": "6%", "h": "16%"},
+        "W-310": {"top": "34%", "left": "73%", "w": "6%", "h": "9%"},
+        "P-200": {"top": "72%", "left": "73%", "w": "6%", "h": "9%"},
+    }
 
-# Integración del Tutor IA
+    # Generamos los "divs" invisibles para cada equipo
+    hotspots_html = ""
+    for unit_id, metricas in datos.items():
+        if unit_id in zonas:
+            z = zonas[unit_id]
+            detalle = ""
+            for k, v in metricas.items():
+                if v != 0: 
+                    detalle += f"• {k}: <span class='data-val'>{v}</span><br>"
+
+            hotspots_html += f"""
+            <div class="hotspot" style="top: {z['top']}; left: {z['left']}; width: {z['w']}; height: {z['h']};">
+                <div class="tooltip-text">
+                    <strong>📊 Equipo: {unit_id}</strong><br><br>
+                    {detalle}
+                </div>
+            </div>
+            """
+
+    # Ensamblamos el CSS y el HTML siguiendo tu lógica
+    html_completo = f"""
+    <style>
+        .container {{
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            max-width: 1200px;
+        }}
+        .overlay-image {{
+            display: block;
+            width: 100%;
+            height: auto;
+        }}
+        .hotspot {{
+            position: absolute;
+            cursor: crosshair;
+            /* Descomenta la siguiente línea si quieres ver dónde están los cuadros invisibles */
+            /* border: 1px solid rgba(255, 0, 0, 0.5); background: rgba(255, 0, 0, 0.1); */
+        }}
+        .tooltip-text {{
+            visibility: hidden;
+            width: max-content;
+            min-width: 180px;
+            background-color: #262730;
+            color: #fff;
+            text-align: left;
+            border-radius: 8px;
+            padding: 15px;
+            position: absolute;
+            z-index: 10;
+            bottom: 110%; /* Aparece justo encima del equipo */
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            border: 1px solid #ff4b4b;
+            font-family: sans-serif;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+            pointer-events: none; /* Evita parpadeos al mover el mouse */
+        }}
+        .hotspot:hover .tooltip-text {{
+            visibility: visible;
+            opacity: 1;
+        }}
+        .data-val {{ color: #ff4b4b; font-weight: bold; }}
+    </style>
+
+    <div class="container">
+        <img src="data:image/svg+xml;base64,{svg_base64}" class="overlay-image">
+        {hotspots_html}
+    </div>
+    """
+    
+    # st.components.v1.html aísla el CSS, garantizando que el hover funcione
+    st.components.v1.html(html_completo, height=750)
+
+except FileNotFoundError:
+    st.error("Archivo 'Diagrama en blanco.svg' no encontrado en el directorio raíz.")
+
+# ==========================================
+# 5. TUTOR IA
+# ==========================================
 st.divider()
 st.subheader("Tutor de Ingeniería Química (IA)")
 if st.button("Analizar eficiencia térmica con Gemini"):
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    prompt = f"""
-    Actúa como un profesor universitario de ingeniería química. Analiza brevemente 
-    estos consumos energéticos de una simulación de concentración de mosto: {datos}. 
-    ¿Qué recomendaciones darías a un estudiante para mejorar la eficiencia del intercambiador W-210?
-    """
+    prompt = f"Actúa como un ingeniero. Analiza estos consumos de la simulación: {datos}."
     with st.spinner("El tutor está analizando los datos..."):
         respuesta = model.generate_content(prompt)
         st.info(respuesta.text)
-st.write("IDs buscados en el SVG:", list(datos.keys()))

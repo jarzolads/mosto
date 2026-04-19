@@ -3,6 +3,7 @@ import biosteam as bst
 import thermosteam as tmo
 import pandas as pd
 import google.generativeai as genai
+import re
 
 # ==========================================
 # 1. FUNCIÓN NÚCLEO DE SIMULACIÓN
@@ -60,31 +61,51 @@ def obtener_datos_equipos(sistema):
     return datos_equipos
 
 # ==========================================
-# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SOLO PYTHON)
+# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (VERSIÓN ROBUSTA)
 # ==========================================
 def inyectar_svg_interactivo(ruta_svg, datos_equipos):
-    # 1. Leemos el archivo SVG original
     with open(ruta_svg, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # 2. Usamos Python para insertar los datos matemáticamente en el XML
     for unit_id, metricas in datos_equipos.items():
-        # &#10; es el salto de línea oficial para tooltips en SVG
+        # Preparamos el texto del tooltip
         info_texto = f"EQUIPO: {unit_id}&#10;"
         for key, value in metricas.items():
-            info_texto += f"{key}: {value}&#10;"
+            if value != 0: 
+                info_texto += f"{key}: {value}&#10;"
             
-        # Buscamos la etiqueta del grupo (ej. <g id="P-100">)
-        etiqueta_buscar = f'<g id="{unit_id}">'
+        # Estrategia a prueba de balas: busca "P-100" o "P100"
+        id_alternativo = unit_id.replace("-", "")
         
-        # Le inyectamos la etiqueta nativa <title> y cambiamos el cursor a la "manito"
-        etiqueta_reemplazo = f'<g id="{unit_id}" style="cursor: pointer;">\n    <title>{info_texto}</title>'
+        # Expresión regular: Encuentra cualquier <g> cuyo id sea P-100 o P100, 
+        # sin importar qué más haya escrito dentro de esa etiqueta.
+        patron = rf'(<g[^>]*id=["\']?({unit_id}|{id_alternativo})["\']?[^>]*>)'
         
-        # Reemplazamos en el texto del SVG
-        svg_content = svg_content.replace(etiqueta_buscar, etiqueta_reemplazo)
+        # Inyecta la etiqueta <title> inmediatamente después de abrir el grupo <g>
+        reemplazo = rf'\1\n    <title>{info_texto}</title>'
+        
+        svg_content = re.sub(patron, reemplazo, svg_content, flags=re.IGNORECASE)
 
-    # 3. Enviamos el SVG modificado directamente a Streamlit (Cero JavaScript)
-    st.components.v1.html(svg_content, height=600, scrolling=True)
+    # Añadimos reglas CSS globales al marco para forzar la interactividad
+    html_code = f"""
+    <style>
+        /* Obliga a todos los grupos con ID a cambiar el cursor y detectar el ratón */
+        svg g[id] {{
+            cursor: pointer !important;
+            pointer-events: all !important;
+            transition: opacity 0.2s;
+        }}
+        /* Añade un efecto visual al pasar el cursor para confirmar que funciona */
+        svg g[id]:hover {{
+            opacity: 0.6 !important;
+        }}
+    </style>
+    <div style="display: flex; justify-content: center; overflow-x: auto;">
+        {svg_content}
+    </div>
+    """
+    
+    st.components.v1.html(html_code, height=600, scrolling=True)
 
 # ==========================================
 # 4. INTERFAZ Y TUTOR IA

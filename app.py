@@ -3,7 +3,8 @@ import biosteam as bst
 import thermosteam as tmo
 import pandas as pd
 import google.generativeai as genai
-import re
+import plotly.graph_objects as go
+import base64
 
 # ==========================================
 # 1. FUNCIÓN NÚCLEO DE SIMULACIÓN
@@ -61,41 +62,71 @@ def obtener_datos_equipos(sistema):
     return datos_equipos
 
 # ==========================================
-# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (SIN IFRAMES)
+# 3. RENDERIZADO DEL DIAGRAMA INTERACTIVO (VÍA PLOTLY)
 # ==========================================
 def inyectar_svg_interactivo(ruta_svg, datos_equipos):
-    with open(ruta_svg, "r", encoding="utf-8") as f:
-        svg_content = f.read()
+    # 1. Leer el SVG y codificarlo para que Plotly lo acepte como imagen de fondo
+    with open(ruta_svg, "rb") as f:
+        encoded_svg = base64.b64encode(f.read()).decode()
+    svg_uri = f"data:image/svg+xml;base64,{encoded_svg}"
 
-    # Inyectamos los datos matemáticamente en el XML
+    # 2. Coordenadas de los equipos mapeadas desde tu archivo original (1200x800)
+    # Nota: Plotly invierte el eje Y respecto al formato SVG
+    coords = {
+        "P-100": {"x": 150, "y": 700},
+        "W-210": {"x": 400, "y": 650},
+        "W-220": {"x": 550, "y": 550},
+        "V-100": {"x": 700, "y": 450},
+        "V-1":   {"x": 810, "y": 340},
+        "W-310": {"x": 910, "y": 500},
+        "P-200": {"x": 910, "y": 200}
+    }
+
+    fig = go.Figure()
+
+    # 3. Añadimos tu diagrama SVG como fondo
+    fig.add_layout_image(
+        dict(
+            source=svg_uri,
+            xref="x", yref="y",
+            x=0, y=800,  # Origen en la esquina superior izquierda
+            sizex=1200, sizey=800,
+            sizing="stretch", layer="below"
+        )
+    )
+
+    # 4. Colocamos marcadores "invisibles" con los datos de BioSTEAM
     for unit_id, metricas in datos_equipos.items():
-        info_texto = f"EQUIPO: {unit_id}&#10;"
-        for key, value in metricas.items():
-            if value != 0: 
-                info_texto += f"{key}: {value}&#10;"
-            
-        id_alternativo = unit_id.replace("-", "")
-        patron = rf'(<g[^>]*id=["\']?({unit_id}|{id_alternativo})["\']?[^>]*>)'
-        reemplazo = rf'\1\n    <title>{info_texto}</title>'
-        
-        svg_content = re.sub(patron, reemplazo, svg_content, flags=re.IGNORECASE)
+        if unit_id in coords:
+            # Construimos el texto que aparecerá al pasar el cursor
+            hover_text = f"<b>Equipo: {unit_id}</b><br>"
+            for key, value in metricas.items():
+                if value != 0: 
+                    hover_text += f"{key}: {value}<br>"
 
-    # LA SOLUCIÓN MÁGICA: Usar st.markdown con unsafe_allow_html=True
-    # Esto incrusta el SVG de forma nativa en la página, permitiendo que 
-    # el navegador muestre los tooltips sin restricciones de seguridad.
-    
-    html_code = f"""
-    <div style="display: flex; justify-content: center; margin: 20px 0;">
-        <style>
-            /* Cambia el cursor para indicar interactividad */
-            svg g[id] {{ cursor: pointer; transition: opacity 0.2s; }}
-            svg g[id]:hover {{ opacity: 0.7; }}
-        </style>
-        {svg_content}
-    </div>
-    """
-    
-    st.markdown(html_code, unsafe_allow_html=True)
+            fig.add_trace(go.Scatter(
+                x=[coords[unit_id]["x"]],
+                y=[coords[unit_id]["y"]],
+                mode="markers",
+                marker=dict(size=60, color="rgba(0,0,0,0)"), # Círculo grande pero transparente
+                hoverinfo="text",
+                hovertext=hover_text,
+                showlegend=False
+            ))
+
+    # 5. Ocultamos los ejes para que parezca una aplicación pura
+    fig.update_layout(
+        xaxis=dict(visible=False, range=[0, 1200]),
+        yaxis=dict(visible=False, range=[0, 800]),
+        margin=dict(l=0, r=0, t=0, b=0),
+        plot_bgcolor="white",
+        hovermode="closest",
+        dragmode=False # Evita que el usuario mueva el dibujo por error
+    )
+
+    # 6. Enviamos el gráfico interactivo a Streamlit
+    # st.plotly_chart es 100% compatible y nativo
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 # ==========================================
 # 4. INTERFAZ Y TUTOR IA
 # ==========================================

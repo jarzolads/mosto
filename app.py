@@ -5,20 +5,15 @@ import pandas as pd
 import base64
 import google.generativeai as genai
 
-# ==========================================
-# 1. CONFIGURACIÓN
-# ==========================================
-st.set_page_config(layout="wide", page_title="Simulador BioSTEAM")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="IALabs - Simulador BioSTEAM", layout="wide")
 
 def get_svg_base64(file_path):
-    """Convierte el SVG a base64 para incrustarlo como imagen de fondo."""
+    """Codifica el SVG para que el navegador lo renderice sin restricciones."""
     with open(file_path, "rb") as f:
-        data = f.read()
-        return base64.b64encode(data).decode()
+        return base64.b64encode(f.read()).decode()
 
-# ==========================================
-# 2. FUNCIÓN NÚCLEO DE SIMULACIÓN
-# ==========================================
+# --- NÚCLEO DE SIMULACIÓN (BioSTEAM) ---
 def ejecutar_simulacion(flujo_mosto, temp_mosto, presion_bomba):
     bst.main_flowsheet.clear()
     chemicals = tmo.Chemicals(["Water", "Ethanol"])
@@ -38,150 +33,97 @@ def ejecutar_simulacion(flujo_mosto, temp_mosto, presion_bomba):
     W310 = bst.HXutility("W-310", ins=V1-0, outs="Producto Final", T=25 + 273.15)
     P200 = bst.Pump("P-200", ins=V1-1, outs=vinazas_retorno, P=3 * 101325)
     
-    eth_sys = bst.System("planta_etanol", path=(P100, W210, W220, V100, V1, W310, P200))
-    eth_sys.simulate()
-    return eth_sys
+    sys = bst.System("planta", path=(P100, W210, W220, V100, V1, W310, P200))
+    sys.simulate()
+    return sys
 
-def obtener_datos_equipos(sistema):
-    datos_equipos = {}
+def extraer_datos_interactivos(sistema):
+    res = {}
     for u in sistema.units:
-        calor_kw = 0.0
-        if hasattr(u, 'heat_utilities') and u.heat_utilities:
-            calor_kw = sum(hu.duty for hu in u.heat_utilities) / 3600
-        elif hasattr(u, "duty") and u.duty is not None:
-            calor_kw = u.duty / 3600
-            
-        potencia = u.power_utility.rate if hasattr(u, "power_utility") and u.power_utility else 0.0
-        temp_out = u.outs[0].T - 273.15 if u.outs else 0
-        
-        datos_equipos[u.ID] = {
-            "Térmica (kW)": round(calor_kw, 2),
-            "Eléctrica (kW)": round(potencia, 2),
-            "T. Salida (°C)": round(temp_out, 1)
-        }
-    return datos_equipos
+        # Manejo de energía para evitar error de .duty
+        calor = sum(hu.duty for hu in u.heat_utilities)/3600 if hasattr(u, 'heat_utilities') and u.heat_utilities else (u.duty/3600 if hasattr(u, 'duty') and u.duty else 0)
+        potencia = u.power_utility.rate if hasattr(u, "power_utility") and u.power_utility else 0
+        tout = u.outs[0].T - 273.15 if u.outs else 0
+        res[u.ID] = {"Q": round(calor, 2), "W": round(potencia, 2), "T": round(tout, 1)}
+    return res
 
-# ==========================================
-# 3. INTERFAZ PRINCIPAL
-# ==========================================
-st.title("Proceso de Concentración de Mosto")
-st.markdown("Pasa el mouse sobre los equipos para ver los datos del balance en tiempo real.")
+# --- INTERFAZ ---
+st.title("Concentración de Mosto: Simulación BioSTEAM")
+st.markdown("Pasa el cursor sobre los equipos para visualizar el balance en tiempo real.")
 
 with st.sidebar:
-    st.header("Parámetros de Operación")
+    st.header("Parámetros de Entrada")
     flujo = st.slider("Flujo Mosto (kg/h)", 500, 1500, 1000)
     temp = st.slider("Temp. Entrada (°C)", 20, 40, 25)
-    presion = st.slider("Presión P-100 (bar)", 2, 6, 4)
+    presion = st.slider("Presión P-100 (bar)", 2.0, 6.0, 4.0)
 
-sys_simulado = ejecutar_simulacion(flujo, temp, presion)
-datos = obtener_datos_equipos(sys_simulado)
+# Ejecución de la simulación
+sistema_res = ejecutar_simulacion(flujo, temp, presion)
+datos_dinamicos = extraer_datos_interactivos(sistema_res)
 
-# ==========================================
-# 4. RENDERIZADO INTERACTIVO (HTML + CSS)
-# ==========================================
+# --- RENDERIZADO INTERACTIVO (LÓGICA CSS TOOLTIP) ---
 try:
-    svg_base64 = get_svg_base64("Diagrama en blanco.svg")
+    svg_b64 = get_svg_base64("Diagrama en blanco.svg")
     
-    # Coordenadas calculadas matemáticamente para superponerse a tu SVG (1200x800)
-    zonas = {
-        "P-100": {"top": "8%", "left": "10%", "w": "6%", "h": "10%"},
-        "W-210": {"top": "14%", "left": "26%", "w": "14%", "h": "8%"},
-        "W-220": {"top": "28%", "left": "43%", "w": "6%", "h": "9%"},
-        "V-100": {"top": "41%", "left": "55%", "w": "5%", "h": "6%"},
-        "V-1":   {"top": "49%", "left": "64%", "w": "6%", "h": "16%"},
-        "W-310": {"top": "34%", "left": "73%", "w": "6%", "h": "9%"},
-        "P-200": {"top": "72%", "left": "73%", "w": "6%", "h": "9%"},
+    # Coordenadas relativas (%) para los hotspots del SVG de 1200x800
+    zonas_mapeo = {
+        "P-100": {"t": "7.5%", "l": "9.1%", "w": "7%", "h": "13%"},
+        "W-210": {"t": "15%", "l": "26.6%", "w": "14%", "h": "8%"},
+        "W-220": {"t": "27.5%", "l": "43.3%", "w": "7%", "h": "13%"},
+        "V-100": {"t": "40%", "l": "56.6%", "w": "5%", "h": "9%"},
+        "V-1":   {"t": "50%", "l": "65%", "w": "5%", "h": "15%"},
+        "W-310": {"t": "33.7%", "l": "73.3%", "w": "7%", "h": "13%"},
+        "P-200": {"t": "71.2%", "l": "73.3%", "w": "7%", "h": "13%"},
     }
 
-    # Generamos los "divs" invisibles para cada equipo
     hotspots_html = ""
-    for unit_id, metricas in datos.items():
-        if unit_id in zonas:
-            z = zonas[unit_id]
-            detalle = ""
-            for k, v in metricas.items():
-                if v != 0: 
-                    detalle += f"• {k}: <span class='data-val'>{v}</span><br>"
-
+    for uid, coord in zonas_mapeo.items():
+        if uid in datos_dinamicos:
+            d = datos_dinamicos[uid]
             hotspots_html += f"""
-            <div class="hotspot" style="top: {z['top']}; left: {z['left']}; width: {z['w']}; height: {z['h']};">
+            <div class="hotspot" style="top:{coord['t']}; left:{coord['l']}; width:{coord['w']}; height:{coord['h']};">
                 <div class="tooltip-text">
-                    <strong>📊 Equipo: {unit_id}</strong><br><br>
-                    {detalle}
+                    <strong>📊 Datos {uid}:</strong><br><br>
+                    • Temp. Salida: <span class="data-val">{d['T']} °C</span><br>
+                    • E. Térmica: <span class="data-val">{d['Q']} kW</span><br>
+                    • E. Eléctrica: <span class="data-val">{d['W']} kW</span>
                 </div>
             </div>
             """
 
-    # Ensamblamos el CSS y el HTML siguiendo tu lógica
-    html_completo = f"""
+    # Ensamblado final de HTML/CSS inyectado
+    html_interactivo = f"""
     <style>
-        .container {{
-            position: relative;
-            display: inline-block;
-            width: 100%;
-            max-width: 1200px;
-        }}
-        .overlay-image {{
-            display: block;
-            width: 100%;
-            height: auto;
-        }}
-        .hotspot {{
-            position: absolute;
-            cursor: crosshair;
-            /* Descomenta la siguiente línea si quieres ver dónde están los cuadros invisibles */
-            /* border: 1px solid rgba(255, 0, 0, 0.5); background: rgba(255, 0, 0, 0.1); */
-        }}
+        .container {{ position: relative; width: 100%; max-width: 1200px; margin: auto; }}
+        .overlay-image {{ width: 100%; height: auto; display: block; }}
+        .hotspot {{ position: absolute; cursor: crosshair; z-index: 5; }}
+        /* Para depurar coordenadas, puedes activar: border: 1px solid red; background: rgba(255,0,0,0.1); */
         .tooltip-text {{
-            visibility: hidden;
-            width: max-content;
-            min-width: 180px;
-            background-color: #262730;
-            color: #fff;
-            text-align: left;
-            border-radius: 8px;
-            padding: 15px;
-            position: absolute;
-            z-index: 10;
-            bottom: 110%; /* Aparece justo encima del equipo */
-            left: 50%;
-            transform: translateX(-50%);
-            opacity: 0;
-            transition: opacity 0.3s;
-            border: 1px solid #ff4b4b;
-            font-family: sans-serif;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
-            pointer-events: none; /* Evita parpadeos al mover el mouse */
+            visibility: hidden; width: 220px; background-color: #262730; color: #fff;
+            border-radius: 8px; padding: 15px; position: absolute; z-index: 100;
+            bottom: 115%; left: 50%; transform: translateX(-50%);
+            opacity: 0; transition: opacity 0.3s; border: 1px solid #ff4b4b;
+            font-family: sans-serif; box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+            pointer-events: none;
         }}
-        .hotspot:hover .tooltip-text {{
-            visibility: visible;
-            opacity: 1;
-        }}
+        .hotspot:hover .tooltip-text {{ visibility: visible; opacity: 1; }}
         .data-val {{ color: #ff4b4b; font-weight: bold; }}
     </style>
-
     <div class="container">
-        <img src="data:image/svg+xml;base64,{svg_base64}" class="overlay-image">
+        <img src="data:image/svg+xml;base64,{svg_b64}" class="overlay-image">
         {hotspots_html}
     </div>
     """
-    
-    # st.components.v1.html aísla el CSS, garantizando que el hover funcione
-    st.components.v1.html(html_completo, height=750)
+    st.components.v1.html(html_interactivo, height=700)
 
 except FileNotFoundError:
-    st.error("Archivo 'Diagrama en blanco.svg' no encontrado en el directorio raíz.")
+    st.error("Asegúrate de que 'Diagrama en blanco.svg' esté en la raíz del proyecto.")
 
-# ==========================================
-# 5. TUTOR IA
-# ==========================================
+# --- TUTOR IA ---
 st.divider()
-st.subheader("Tutor de Ingeniería Química (IA)")
-if st.button("Analizar eficiencia térmica con Gemini"):
+if st.button("Consultar Tutor IA (Gemini)"):
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    prompt = f"Actúa como un ingeniero. Analiza estos consumos de la simulación: {datos}."
-    with st.spinner("El tutor está analizando los datos..."):
-        respuesta = model.generate_content(prompt)
-        st.info(respuesta.text)
+    prompt = f"Analiza estos resultados de simulación de ingeniería química: {datos_dinamicos}."
+    with st.spinner("El tutor está analizando el proceso..."):
+        st.info(model.generate_content(prompt).text)
